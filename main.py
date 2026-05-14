@@ -1,114 +1,85 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+import random
 import json
-from datetime import datetime
 
-class WeatherDiary:
+class RandomTaskGenerator:
     def __init__(self, root):
         self.root = root
-        self.root.title("Weather Diary — Дневник погоды")
-        self.data_file = "weather_data.json"
-        self.records = self.load_data()
-
-        # Поля ввода
-        tk.Label(root, text="Дата (ГГГГ-ММ-ДД):").grid(row=0, column=0, padx=5, pady=5)
-        self.date_entry = tk.Entry(root)
-        self.date_entry.insert(0, datetime.now().strftime("%Y-%m-%d"))
-        self.date_entry.grid(row=0, column=1)
-
-        tk.Label(root, text="Температура (°C):").grid(row=1, column=0)
-        self.temp_entry = tk.Entry(root)
-        self.temp_entry.grid(row=1, column=1)
-
-        tk.Label(root, text="Описание (ясно, дождь...):").grid(row=2, column=0)
-        self.desc_entry = tk.Entry(root)
-        self.desc_entry.grid(row=2, column=1)
-
-        tk.Label(root, text="Осадки:").grid(row=3, column=0)
-        self.precip_var = tk.StringVar(value="Нет")
-        self.precip_cb = ttk.Combobox(root, textvariable=self.precip_var, values=["Да", "Нет"], state="readonly")
-        self.precip_cb.grid(row=3, column=1)
-
-        tk.Button(root, text="Добавить запись", command=self.add_record, bg="lightblue").grid(row=4, column=0, columnspan=2, pady=10)
-
-        # Фильтры
-        filter_frame = tk.LabelFrame(root, text="Фильтрация")
-        filter_frame.grid(row=5, column=0, columnspan=2, padx=10, pady=5, sticky="we")
+        self.root.title("Random Task Generator — Баданин Максим")
+        self.history_file = "task_history.json"
         
-        tk.Label(filter_frame, text="Мин. темп:").pack(side="left")
-        self.filter_temp = tk.Entry(filter_frame, width=5)
-        self.filter_temp.pack(side="left", padx=5)
+        # Список доступных задач по категориям
+        self.tasks_pool = {
+            "Учёба": ["Прочитать статью", "Выучить 5 слов", "Посмотреть лекцию"],
+            "Спорт": ["Сделать зарядку", "Пробежать 1 км", "Присесть 20 раз"],
+            "Работа": ["Разобрать почту", "Написать отчет", "Запланировать звонок"]
+        }
         
-        tk.Button(filter_frame, text="Применить", command=self.refresh_table).pack(side="left", padx=5)
-        tk.Button(filter_frame, text="Сброс", command=self.reset_filter).pack(side="left")
+        self.history = self.load_history()
 
-        # Таблица
-        self.tree = ttk.Treeview(root, columns=("Дата", "Темп", "Описание", "Осадки"), show='headings')
-        self.tree.heading("Дата", text="Дата")
-        self.tree.heading("Темп", text="Темп. °C")
-        self.tree.heading("Описание", text="Описание")
-        self.tree.heading("Осадки", text="Осадки")
-        self.tree.grid(row=6, column=0, columnspan=2, padx=10, pady=10)
+        # Интерфейс
+        tk.Label(root, text="Выберите категорию:", font=('Arial', 10)).pack(pady=5)
+        self.category_var = tk.StringVar(value="Учёба")
+        self.category_cb = ttk.Combobox(root, textvariable=self.category_var, 
+                                        values=list(self.tasks_pool.keys()), state="readonly")
+        self.category_cb.pack(pady=5)
 
-        self.refresh_table()
+        tk.Button(root, text="Сгенерировать задачу", command=self.generate_task, 
+                  bg="#4CAF50", fg="white", font=('Arial', 10, 'bold')).pack(pady=10)
 
-    def add_record(self):
+        # Поле вывода текущей задачи
+        self.result_label = tk.Label(root, text="Нажми кнопку, чтобы получить задачу", 
+                                     font=('Arial', 11, 'italic'), fg="blue")
+        self.result_label.pack(pady=10)
+
+        # История
+        tk.Label(root, text="История сгенерированных задач:").pack(pady=5)
+        self.history_listbox = tk.Listbox(root, width=50, height=10)
+        self.history_listbox.pack(padx=10, pady=5)
+
+        # Фильтр истории
+        filter_frame = tk.Frame(root)
+        filter_frame.pack(pady=5)
+        tk.Label(filter_frame, text="Фильтр:").pack(side="left")
+        self.filter_var = tk.StringVar(value="Все")
+        self.filter_cb = ttk.Combobox(filter_frame, textvariable=self.filter_var, 
+                                      values=["Все"] + list(self.tasks_pool.keys()), width=10)
+        self.filter_cb.pack(side="left", padx=5)
+        tk.Button(filter_frame, text="Применить", command=self.update_history_display).pack(side="left")
+
+        self.update_history_display()
+
+    def generate_task(self):
+        cat = self.category_var.get()
+        task = random.choice(self.tasks_pool[cat])
+        self.result_label.config(text=f"Твоя задача: {task}", fg="black")
+        
+        # Добавляем в историю
+        self.history.append({"task": task, "type": cat})
+        self.save_history()
+        self.update_history_display()
+
+    def save_history(self):
+        with open(self.history_file, "w", encoding="utf-8") as f:
+            json.dump(self.history, f, indent=4, ensure_ascii=False)
+
+    def load_history(self):
         try:
-            date_str = self.date_entry.get()
-            datetime.strptime(date_str, "%Y-%m-%d") # Валидация даты
-            
-            temp = float(self.temp_entry.get()) # Валидация числа
-            desc = self.desc_entry.get().strip()
-            
-            if not desc:
-                raise ValueError("Описание не может быть пустым")
-
-            self.records.append({
-                "date": date_str,
-                "temp": temp,
-                "desc": desc,
-                "precip": self.precip_var.get()
-            })
-            self.save_data()
-            self.refresh_table()
-            self.temp_entry.delete(0, tk.END)
-            self.desc_entry.delete(0, tk.END)
-            
-        except ValueError as e:
-            messagebox.showerror("Ошибка ввода", f"Проверьте данные: {e}\nФормат даты: ГГГГ-ММ-ДД")
-
-    def save_data(self):
-        with open(self.data_file, "w", encoding="utf-8") as f:
-            json.dump(self.records, f, indent=4, ensure_ascii=False)
-
-    def load_data(self):
-        try:
-            with open(self.data_file, "r", encoding="utf-8") as f:
+            with open(self.history_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             return []
 
-    def reset_filter(self):
-        self.filter_temp.delete(0, tk.END)
-        self.refresh_table()
-
-    def refresh_table(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+    def update_history_display(self):
+        self.history_listbox.delete(0, tk.END)
+        f_type = self.filter_var.get()
         
-        min_temp_filter = self.filter_temp.get()
-        
-        for r in self.records:
-            if min_temp_filter:
-                try:
-                    if r["temp"] < float(min_temp_filter):
-                        continue
-                except ValueError:
-                    pass
-            
-            self.tree.insert("", "end", values=(r["date"], r["temp"], r["desc"], r["precip"]))
+        for item in reversed(self.history):
+            if f_type == "Все" or item["type"] == f_type:
+                self.history_listbox.insert(tk.END, f"[{item['type']}] {item['task']}")
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = WeatherDiary(root)
+    app = RandomTaskGenerator(root)
     root.mainloop()
